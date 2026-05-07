@@ -28,15 +28,12 @@ onMounted(async () => {
 
   if (savedData) {
     selectedUrls.value = JSON.parse(savedData);
-    
-    console.log('SELECTED URLS:', selectedUrls.value);
   }
 
   try {
     const response = await fetch('https://picsum.photos/v2/list?page=1&limit=10');
     const data = await response.json();
     images.value = data;
-    console.log('IMAGES:', images.value);
   } catch (error) {
     console.error('Error fetching images:', error);
   }
