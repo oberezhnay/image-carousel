@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
   type ImageItem = {
     id: string
@@ -32,21 +32,15 @@
   const isSelected = (url: string) => props.selected.includes(url);
 
   const measureSlides = () => {
-    const root = carouselRef.value;
-    if (!root) return;
-    const first = root.querySelector<HTMLElement>('.slide');
-    if (first) {
-      const style = getComputedStyle(first);
-      const marginRight = parseFloat(style.marginRight || '0');
-
-      imageWidth.value = first.offsetWidth + marginRight;
-      containerWidth.value = root.clientWidth;
-      if (containerWidth.value < 600) {
-        imageWidth.value = containerWidth.value;
-      } else {
-        imageWidth.value = imageWidth.value;
-      }
-    }
+    const root = carouselRef.value
+    if (!root) return
+    const first = root.querySelector<HTMLElement>('.slide')
+    if (!first) return
+    const style = getComputedStyle(first)
+    const marginRight = parseFloat(style.marginRight || '0')
+    const full = first.offsetWidth + marginRight
+    containerWidth.value = root.clientWidth
+    imageWidth.value = containerWidth.value < 600 ? containerWidth.value : full
   };
 
   const next = () => {
@@ -57,20 +51,18 @@
     currentIndex.value = (currentIndex.value - 1 + props.images.length) % props.images.length;
   };
 
-  onMounted(() => {
-    if (!carouselRef.value) return;
-    measureSlides();
-    observer = new ResizeObserver(entries => {
-
-      for (let entry of entries) {
-
-        if (entry.target === carouselRef.value) {
-          containerWidth.value = entry.contentRect.width;
-          measureSlides();
-        }
-      }
-    });
-    observer.observe(carouselRef.value);
+  onMounted(async () => {
+    if (!carouselRef.value) return
+    await nextTick()
+    measureSlides()
+    observer = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        if (!carouselRef.value) return
+        containerWidth.value = carouselRef.value.clientWidth
+        measureSlides()
+      })
+    })
+    observer.observe(carouselRef.value)
   });
 
   onBeforeUnmount(() => {
@@ -80,9 +72,14 @@
     }
   });
 
+  const isMobile = computed(() => containerWidth.value > 0 && containerWidth.value < 600)
+
   const translateX = computed(() => {
-    return `translateX(-${currentIndex.value * imageWidth.value}px)`;
-  });
+    if (isMobile.value) {
+      return `translateX(-${currentIndex.value * 100}%)`
+    }
+    return `translateX(-${Math.round(currentIndex.value * imageWidth.value)}px)`
+  })
 
   watch(() => props.images.length, (len) => {
     if (currentIndex.value >= len) {
@@ -197,6 +194,25 @@
   height: 260px;
   object-fit: cover;
   display: block;
+}
+
+ @media (max-width: 599px) {
+  .slide {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .slide img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    display: block;
+  }
+
+  .viewport {
+    padding: 0;
+  }
 }
 
 .like-btn {
