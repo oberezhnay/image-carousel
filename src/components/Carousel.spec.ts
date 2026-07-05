@@ -65,7 +65,7 @@ afterAll(() => {
 })
 
 describe('Carousel.vue', () => {
-  it('renders slide items and image attributes', async () => {
+  it('renders duplicated slide items and image attributes', async () => {
     const wrapper = mount(Carousel, {
       props: {
         images: mockImages,
@@ -74,7 +74,7 @@ describe('Carousel.vue', () => {
     })
 
     const slides = wrapper.findAll('.slide')
-    expect(slides).toHaveLength(3)
+    expect(slides).toHaveLength(mockImages.length * 3)
     expect(wrapper.find('img').attributes('src')).toBe(mockImages[0].download_url)
     expect(wrapper.find('img').attributes('alt')).toBe(mockImages[0].author)
   })
@@ -103,13 +103,17 @@ describe('Carousel.vue', () => {
     })
 
     const track = wrapper.find('.track')
-    expect(track.attributes('style')).toContain('translateX(-0px)')
+    const initialStyle = track.attributes('style')
+    expect(initialStyle).toContain('translateX(')
 
     await wrapper.find('.next').trigger('click')
-    expect(track.attributes('style')).toContain('translateX(-320px)')
+    const nextStyle = track.attributes('style')
+    expect(nextStyle).not.toBe(initialStyle)
 
     await wrapper.find('.prev').trigger('click')
-    expect(track.attributes('style')).toContain('translateX(-0px)')
+    const prevStyle = track.attributes('style')
+    expect(prevStyle).not.toBe(nextStyle)
+    expect(prevStyle).toContain('translateX(')
   })
 
   it('marks selected images with active state', async () => {

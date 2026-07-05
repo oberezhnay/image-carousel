@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+  import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
   type ImageItem = {
     id: string
@@ -21,8 +21,11 @@
 
   const currentIndex = ref(0);
   const containerWidth = ref(0);
-  const imageWidth = ref(320);
+  const slidesPerView = ref(1);
+  const slideWidth = ref(320);
+  const gap = 12;
   const carouselRef = ref<HTMLElement | null>(null);
+  const trackRef = ref<HTMLElement | null>(null);
   let observer: ResizeObserver | null = null;
 
   const onToggleSelect = (url: string) => {
@@ -32,37 +35,71 @@
   const isSelected = (url: string) => props.selected.includes(url);
 
   const measureSlides = () => {
-    const root = carouselRef.value
-    if (!root) return
-    const first = root.querySelector<HTMLElement>('.slide')
-    if (!first) return
-    const style = getComputedStyle(first)
-    const marginRight = parseFloat(style.marginRight || '0')
-    const full = first.offsetWidth + marginRight
-    containerWidth.value = root.clientWidth
-    imageWidth.value = containerWidth.value < 600 ? containerWidth.value : full
+    const root = carouselRef.value;
+    if (!root) return;
+    containerWidth.value = root.clientWidth;
+
+    if (containerWidth.value < 600) {
+      slidesPerView.value = 1;
+    } else {
+      slidesPerView.value = Math.max(1, Math.floor(containerWidth.value / 320));
+    }
+
+    const totalGaps = (slidesPerView.value - 1) * gap;
+    slideWidth.value = Math.floor((containerWidth.value - totalGaps) / slidesPerView.value);
   };
 
+  const imagesCount = () => props.images.length;
+
   const next = () => {
-    currentIndex.value = (currentIndex.value + 1) % props.images.length;
+    if (imagesCount() === 0) return;
+    currentIndex.value = currentIndex.value + 1;
   };
 
   const prev = () => {
-    currentIndex.value = (currentIndex.value - 1 + props.images.length) % props.images.length;
+    if (imagesCount() === 0) return;
+    currentIndex.value = currentIndex.value - 1;
   };
 
-  onMounted(async () => {
-    if (!carouselRef.value) return
-    await nextTick()
-    measureSlides()
-    observer = new ResizeObserver(() => {
-      requestAnimationFrame(() => {
-        if (!carouselRef.value) return
-        containerWidth.value = carouselRef.value.clientWidth
-        measureSlides()
-      })
-    })
-    observer.observe(carouselRef.value)
+ 
+  const duplicated = computed(() => {
+    if (!props.images || props.images.length === 0) return [] as ImageItem[];
+    return [...props.images, ...props.images, ...props.images];
+  });
+
+  const onTrackTransitionEnd = (e: TransitionEvent) => {
+    if (!props.images || props.images.length === 0) return;
+    const len = props.images.length;
+    if (currentIndex.value >= len * 2) {
+      if (trackRef.value) trackRef.value.style.transition = 'none';
+      currentIndex.value = currentIndex.value - len;
+      void (trackRef.value && trackRef.value.offsetHeight);
+      if (trackRef.value) trackRef.value.style.transition = '';
+    } else if (currentIndex.value < len) {
+      if (trackRef.value) trackRef.value.style.transition = 'none';
+      currentIndex.value = currentIndex.value + len;
+      void (trackRef.value && trackRef.value.offsetHeight);
+      if (trackRef.value) trackRef.value.style.transition = '';
+    }
+  };
+
+  onMounted(() => {
+    if (!carouselRef.value) return;
+    measureSlides();
+    observer = new ResizeObserver(entries => {
+
+      for (let entry of entries) {
+
+        if (entry.target === carouselRef.value) {
+          containerWidth.value = entry.contentRect.width;
+          measureSlides();
+        }
+      }
+    });
+    observer.observe(carouselRef.value);
+    
+    if (props.images.length) currentIndex.value = props.images.length;
+    if (trackRef.value) trackRef.value.addEventListener('transitionend', onTrackTransitionEnd as EventListener);
   });
 
   onBeforeUnmount(() => {
@@ -70,20 +107,20 @@
       observer.disconnect();
       observer = null;
     }
+    if (trackRef.value) trackRef.value.removeEventListener('transitionend', onTrackTransitionEnd as EventListener);
   });
 
-  const isMobile = computed(() => containerWidth.value > 0 && containerWidth.value < 600)
-
   const translateX = computed(() => {
-    if (isMobile.value) {
-      return `translateX(-${currentIndex.value * 100}%)`
-    }
-    return `translateX(-${Math.round(currentIndex.value * imageWidth.value)}px)`
-  })
+    const step = slideWidth.value + gap;
+    return `translateX(-${currentIndex.value * step}px)`;
+  });
 
   watch(() => props.images.length, (len) => {
-    if (currentIndex.value >= len) {
-      currentIndex.value = Math.max(0, len - 1);
+    if (len > 0) {
+      currentIndex.value = len; // reset to middle copy
+      setTimeout(() => measureSlides(), 0);
+    } else {
+      currentIndex.value = 0;
     }
   });
 
@@ -96,12 +133,14 @@
     <div class="viewport" ref="carouselRef">
       <div 
         class="track" 
+        ref="trackRef"
         :style="{ transform: translateX }"
       >
         <article 
-          v-for="image in props.images" 
-          :key="image.id" 
+          v-for="(image, idx) in duplicated" 
+          :key="image.id + '-' + idx" 
           class="slide"
+          :style="{ width: slideWidth + 'px', marginRight: idx === duplicated.length - 1 ? '0px' : gap + 'px' }"
         >
           <img :src="image.download_url" :alt="image.author" />
 
@@ -176,8 +215,8 @@
 .slide {
   position: relative;
   flex: 0 0 auto;
-  width: 320px;
-  margin-right: 12px;
+  width: auto;
+  margin-right: 0;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
@@ -194,25 +233,6 @@
   height: 260px;
   object-fit: cover;
   display: block;
-}
-
- @media (max-width: 599px) {
-  .slide {
-    width: 100%;
-    margin-right: 0;
-  }
-
-  .slide img {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 16/9;
-    object-fit: cover;
-    display: block;
-  }
-
-  .viewport {
-    padding: 0;
-  }
 }
 
 .like-btn {
